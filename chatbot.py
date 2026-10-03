@@ -43,6 +43,7 @@ You are "Aura", the AI booking assistant for {BUSINESS['name']}.
 You are an AI, not a human.
 
 SCOPE:
+
 Only help with salon appointments:
 - check availability
 - book appointments
@@ -85,11 +86,11 @@ TRUTH RULES:
    to YYYY-MM-DD.
 
 10. Before booking, collect:
-    - service
-    - date
-    - time
-    - customer name
-    - 10-digit mobile number
+     - service
+     - date
+     - time
+     - customer name
+     - 10-digit mobile number
 
 11. Before booking, read the complete details back and ask for
     explicit confirmation.
@@ -104,6 +105,7 @@ TRUTH RULES:
     use request_human_handoff.
 
 STYLE:
+
 Warm, concise and professional.
 Use 1-4 short sentences.
 Use Rs for prices.
@@ -145,7 +147,6 @@ def make_tools(engine: Engine, trace: list):
         stylist: str = ""
     ) -> dict:
         """Check available appointment slots."""
-
         return logged(
             "check_availability",
             {
@@ -169,7 +170,6 @@ def make_tools(engine: Engine, trace: list):
         stylist: str = ""
     ) -> dict:
         """Create a booking after explicit customer confirmation."""
-
         return logged(
             "book_appointment",
             {
@@ -215,7 +215,6 @@ def make_tools(engine: Engine, trace: list):
         new_time: str
     ) -> dict:
         """Reschedule a booking."""
-
         return logged(
             "reschedule_booking",
             {
@@ -237,7 +236,6 @@ def make_tools(engine: Engine, trace: list):
         phone: str
     ) -> dict:
         """Cancel a booking."""
-
         return logged(
             "cancel_booking",
             {
@@ -256,7 +254,6 @@ def make_tools(engine: Engine, trace: list):
         reason: str
     ) -> dict:
         """Create a human handoff ticket."""
-
         return logged(
             "request_human_handoff",
             {
@@ -299,7 +296,6 @@ class Assistant:
         self.engine = engine
 
         self.models = models or DEFAULT_MODELS
-
         self.idx = 0
 
         self.trace = []
@@ -340,7 +336,6 @@ class Assistant:
         return self.models[self.idx]
 
     def _config(self):
-
         return types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             tools=self.tools,
@@ -354,7 +349,6 @@ class Assistant:
         )
 
     def _new_chat(self, history=None):
-
         self.chat = self.client.chats.create(
             model=self.model,
             config=self._config(),
@@ -372,13 +366,11 @@ class Assistant:
         now = self.engine.clock()
 
         if "tomorrow" in lower:
-
             return (
                 now + timedelta(days=1)
             ).strftime("%Y-%m-%d")
 
         if "today" in lower:
-
             return now.strftime("%Y-%m-%d")
 
         # YYYY-MM-DD
@@ -388,7 +380,6 @@ class Assistant:
         )
 
         if match:
-
             return match.group(1)
 
         # DD/MM/YYYY or DD-MM-YYYY
@@ -398,7 +389,6 @@ class Assistant:
         )
 
         if match:
-
             day = int(match.group(1))
             month = int(match.group(2))
             year = int(match.group(3))
@@ -547,7 +537,6 @@ class Assistant:
         )
 
         if match:
-
             return match.group(1)
 
         return None
@@ -556,53 +545,38 @@ class Assistant:
     # NAME PARSING
     # =============================================================
 
-   def _extract_name(self, text: str):
+    def _extract_name(self, text: str):
 
-    # First handle explicit formats
-    patterns = [
-        r"(?:my name is|i am|i'm|name is)\s+([A-Za-z][A-Za-z .'-]{1,59})",
-        r"(?:name)\s*[:\-]\s*([A-Za-z][A-Za-z .'-]{1,59})"
-    ]
+        patterns = [
+            r"(?:my name is|i am|i'm|name is)\s+([A-Za-z][A-Za-z .'-]{1,59})",
+            r"(?:name)\s*[:\-]\s*([A-Za-z][A-Za-z .'-]{1,59})"
+        ]
 
-    for pattern in patterns:
+        for pattern in patterns:
 
-        match = re.search(
-            pattern,
-            text,
-            re.IGNORECASE
-        )
-
-        if match:
-
-            name = match.group(1).strip()
-
-            name = re.sub(
-                r"\s+(?:and|,)?\s*(?:my\s+)?phone.*$",
-                "",
-                name,
-                flags=re.IGNORECASE
+            match = re.search(
+                pattern,
+                text,
+                re.IGNORECASE
             )
 
-            return " ".join(name.split())
+            if match:
 
-    # Handle a plain name such as:
-    # "Lakshya Malhotra"
-    # but don't treat ordinary sentences as names.
-    cleaned = text.strip()
+                name = match.group(1).strip()
 
-    if (
-        re.fullmatch(
-            r"[A-Za-z]+(?:[ .'-][A-Za-z]+){0,3}",
-            cleaned
-        )
-        and len(cleaned.split()) <= 4
-    ):
+                # Remove common trailing phone wording.
+                name = re.sub(
+                    r"\s+(?:and|,)?\s*(?:my\s+)?phone.*$",
+                    "",
+                    name,
+                    flags=re.IGNORECASE
+                )
 
-        return " ".join(
-            cleaned.split()
-        )
+                return " ".join(
+                    name.split()
+                )
 
-    return None
+        return None
 
     # =============================================================
     # YES / NO
@@ -788,7 +762,6 @@ class Assistant:
             )
 
             if stylists:
-
                 self.pending_booking["stylist"] = stylists[0]
 
             return (
@@ -852,24 +825,6 @@ class Assistant:
     ):
 
         p = self.pending_booking
-        # User may change the date during an existing booking flow.
-new_date = self._extract_date(user_text)
-
-if new_date and new_date != p["date"]:
-
-    p["date"] = new_date
-    p["time"] = None
-    p["name"] = None
-    p["phone"] = None
-    p["confirmed"] = False
-    p["slots"] = []
-
-    status, response = self._check_direct_availability(
-        p["service"],
-        new_date
-    )
-
-    return response
 
         # ---------------------------------------------------------
         # USER SELECTED A TIME
