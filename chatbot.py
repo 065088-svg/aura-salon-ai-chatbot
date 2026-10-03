@@ -547,36 +547,53 @@ class Assistant:
 
     def _extract_name(self, text: str):
 
-        patterns = [
-            r"(?:my name is|i am|i'm|name is)\s+([A-Za-z][A-Za-z .'-]{1,59})",
-            r"(?:name)\s*[:\-]\s*([A-Za-z][A-Za-z .'-]{1,59})"
-        ]
+    patterns = [
+        r"(?:my name is|i am|i'm|name is)\s+([A-Za-z][A-Za-z .'-]{1,59})",
+        r"(?:name)\s*[:\-]\s*([A-Za-z][A-Za-z .'-]{1,59})"
+    ]
 
-        for pattern in patterns:
+    for pattern in patterns:
 
-            match = re.search(
-                pattern,
-                text,
-                re.IGNORECASE
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            name = match.group(1).strip()
+
+            name = re.sub(
+                r"\s+(?:and|,)?\s*(?:my\s+)?phone.*$",
+                "",
+                name,
+                flags=re.IGNORECASE
             )
 
-            if match:
+            return " ".join(
+                name.split()
+            )
 
-                name = match.group(1).strip()
+    # Allow a simple name such as:
+    # Lakshya
+    # Lakshya Malhotra
 
-                # Remove common trailing phone wording.
-                name = re.sub(
-                    r"\s+(?:and|,)?\s*(?:my\s+)?phone.*$",
-                    "",
-                    name,
-                    flags=re.IGNORECASE
-                )
+    cleaned = text.strip()
 
-                return " ".join(
-                    name.split()
-                )
+    if (
+        re.fullmatch(
+            r"[A-Za-z]+(?:[ .'-][A-Za-z]+){0,3}",
+            cleaned
+        )
+        and len(cleaned.split()) <= 4
+    ):
 
-        return None
+        return " ".join(
+            cleaned.split()
+        )
+
+    return None
 
     # =============================================================
     # YES / NO
@@ -820,110 +837,142 @@ class Assistant:
     # =============================================================
 
     def _process_pending_booking(
-        self,
+    self,
+    user_text
+):
+
+    p = self.pending_booking
+
+    # ---------------------------------------------------------
+    # USER WANTS TO CHANGE THE DATE
+    # ---------------------------------------------------------
+
+    new_date = self._extract_date(
         user_text
-    ):
+    )
 
-        p = self.pending_booking
+    if new_date and new_date != p["date"]:
 
-        # ---------------------------------------------------------
-        # USER SELECTED A TIME
-        # ---------------------------------------------------------
+        p["date"] = new_date
 
-        if p["service"] and p["date"] and not p["time"]:
+        p["time"] = None
+        p["name"] = None
+        p["phone"] = None
+        p["confirmed"] = False
+        p["slots"] = []
+        p["stylist"] = ""
 
-            selected_time = self._extract_time(
-                user_text
+        status, response = (
+            self._check_direct_availability(
+                p["service"],
+                new_date
             )
+        )
 
-            if selected_time:
+        return response
 
-                # Make sure the selected time was actually available.
-                valid = [
-                    s["time"]
-                    for s in p.get(
-                        "slots",
+    # ---------------------------------------------------------
+    # USER SELECTED A TIME
+    # ---------------------------------------------------------
+
+    if p["service"] and p["date"] and not p["time"]:
+
+        selected_time = self._extract_time(
+            user_text
+        )
+
+        if selected_time:
+
+            valid = [
+                s["time"]
+                for s in p.get(
+                    "slots",
+                    []
+                )
+            ]
+
+            if selected_time not in valid:
+
+                return (
+                    f"{selected_time} isn't one of the available "
+                    f"times I found. Please choose one of: "
+                    f"{', '.join(valid[:6])}."
+                )
+
+            p["time"] = selected_time
+
+            for slot in p["slots"]:
+
+                if slot["time"] == selected_time:
+
+                    stylists = slot.get(
+                        "stylists",
                         []
                     )
-                ]
 
-                if selected_time not in valid:
+                    if stylists:
+                        p["stylist"] = stylists[0]
 
-                    return (
-                        f"{selected_time} isn't one of the available "
-                        f"times I found. Please choose one of: "
-                        f"{', '.join(valid[:6])}."
-                    )
+                    break
 
-                p["time"] = selected_time
+            return self._ask_for_customer_details()
 
-                # Get stylist for that slot.
-                for slot in p["slots"]:
+    # ---------------------------------------------------------
+    # NAME
+    # ---------------------------------------------------------
 
-                    if slot["time"] == selected_time:
+    if not p["name"]:
 
-                        stylists = slot.get(
-                            "stylists",
-                            []
-                        )
+        name = self._extract_name(
+            user_text
+        )
 
-                        if stylists:
-                            p["stylist"] = stylists[0]
+        if name:
+            p["name"] = name
 
-                        break
+    # ---------------------------------------------------------
+    # PHONE
+    # ---------------------------------------------------------
 
-                return self._ask_for_customer_details()
+    if not p["phone"]:
 
-        # ---------------------------------------------------------
-        # NAME
-        # ---------------------------------------------------------
+        phone = self._extract_phone(
+            user_text
+        )
 
-        if not p["name"]:
+        if phone:
+            p["phone"] = phone
 
-            name = self._extract_name(
-                user_text
-            )
+    # ---------------------------------------------------------
+    # BOTH DETAILS AVAILABLE
+    # ---------------------------------------------------------
 
-            if name:
-                p["name"] = name
+    if p["name"] and p["phone"]:
 
-        # ---------------------------------------------------------
-        # PHONE
-        # ---------------------------------------------------------
+        return self._booking_summary()
 
-        if not p["phone"]:
+    # ---------------------------------------------------------
+    # NAME STILL MISSING
+    # ---------------------------------------------------------
 
-            phone = self._extract_phone(
-                user_text
-            )
+    if not p["name"]:
 
-            if phone:
-                p["phone"] = phone
+        return (
+            "Please provide the name for the booking."
+        )
 
-        # ---------------------------------------------------------
-        # BOTH DETAILS NOW AVAILABLE
-        # ---------------------------------------------------------
+    # ---------------------------------------------------------
+    # PHONE STILL MISSING
+    # ---------------------------------------------------------
 
-        if p["name"] and p["phone"]:
+    if not p["phone"]:
 
-            # If this is the first time all details are present,
-            # ask for explicit confirmation.
-            return self._booking_summary()
+        return (
+            f"Thanks, {p['name']}. "
+            "Please provide your 10-digit mobile number."
+        )
 
-        if not p["name"]:
-
-            return (
-                "Please provide the name for the booking."
-            )
-
-        if not p["phone"]:
-
-            return (
-                f"Thanks, {p['name']}. "
-                "Please provide your 10-digit mobile number."
-            )
-
-        return self._ask_for_customer_details()
+    return self._ask_for_customer_details()
 
     # =============================================================
     # CREATE BOOKING
