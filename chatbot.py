@@ -556,38 +556,53 @@ class Assistant:
     # NAME PARSING
     # =============================================================
 
-    def _extract_name(self, text: str):
+   def _extract_name(self, text: str):
 
-        patterns = [
-            r"(?:my name is|i am|i'm|name is)\s+([A-Za-z][A-Za-z .'-]{1,59})",
-            r"(?:name)\s*[:\-]\s*([A-Za-z][A-Za-z .'-]{1,59})"
-        ]
+    # First handle explicit formats
+    patterns = [
+        r"(?:my name is|i am|i'm|name is)\s+([A-Za-z][A-Za-z .'-]{1,59})",
+        r"(?:name)\s*[:\-]\s*([A-Za-z][A-Za-z .'-]{1,59})"
+    ]
 
-        for pattern in patterns:
+    for pattern in patterns:
 
-            match = re.search(
-                pattern,
-                text,
-                re.IGNORECASE
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            name = match.group(1).strip()
+
+            name = re.sub(
+                r"\s+(?:and|,)?\s*(?:my\s+)?phone.*$",
+                "",
+                name,
+                flags=re.IGNORECASE
             )
 
-            if match:
+            return " ".join(name.split())
 
-                name = match.group(1).strip()
+    # Handle a plain name such as:
+    # "Lakshya Malhotra"
+    # but don't treat ordinary sentences as names.
+    cleaned = text.strip()
 
-                # Remove common trailing phone wording.
-                name = re.sub(
-                    r"\s+(?:and|,)?\s*(?:my\s+)?phone.*$",
-                    "",
-                    name,
-                    flags=re.IGNORECASE
-                )
+    if (
+        re.fullmatch(
+            r"[A-Za-z]+(?:[ .'-][A-Za-z]+){0,3}",
+            cleaned
+        )
+        and len(cleaned.split()) <= 4
+    ):
 
-                return " ".join(
-                    name.split()
-                )
+        return " ".join(
+            cleaned.split()
+        )
 
-        return None
+    return None
 
     # =============================================================
     # YES / NO
@@ -837,6 +852,24 @@ class Assistant:
     ):
 
         p = self.pending_booking
+        # User may change the date during an existing booking flow.
+new_date = self._extract_date(user_text)
+
+if new_date and new_date != p["date"]:
+
+    p["date"] = new_date
+    p["time"] = None
+    p["name"] = None
+    p["phone"] = None
+    p["confirmed"] = False
+    p["slots"] = []
+
+    status, response = self._check_direct_availability(
+        p["service"],
+        new_date
+    )
+
+    return response
 
         # ---------------------------------------------------------
         # USER SELECTED A TIME
